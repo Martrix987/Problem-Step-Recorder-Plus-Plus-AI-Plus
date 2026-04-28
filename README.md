@@ -108,6 +108,20 @@ This is a powerful screenshot tool that lets you:
 - Includes base64-encoded icon data
 - Implements strict mode for error handling
 
+## 🤖 AI Auto-Documentation (LocalScribe)
+We have integrated an AI-powered auto-documentation generator **natively inside the PSR++ application!** No external scripts, no system tray app—just click a button to turn your screenshots into a clean Markdown (SOP) tutorial.
+
+### How It Works
+1. Take screenshots as you normally would using **Single Capture** or **Continuous Capture**.
+2. When you finish, click the shiny new **✨ Generate AI SOP** button in the left panel.
+3. Keep the default model (`gemma4:e4b` or any vision model you downloaded) and adjust context size if needed.
+4. PSR++ directly contacts your local instance of Ollama, analyzing each screenshot, and writing an instruction step.
+5. In seconds, a fully documented `SOP.md` file opens with embedded screenshots and AI-written instructions!
+
+### Prerequisites
+- [Ollama](https://ollama.com/) must be installed locally and running.
+- A **vision-capable** model installed via command line (e.g. `ollama pull llava`, `ollama pull moondream`, or `ollama pull gemma4:e4b` if that specific revision has vision capabilities).
+
 ## Future Change Log
 - [Fix] - Remove small boarder around screenshots
 - [Feature] - Add screenshot outline color and size. Include toggle as well

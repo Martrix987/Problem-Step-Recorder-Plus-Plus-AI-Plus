@@ -125,7 +125,7 @@ $mainForm.Icon = ConvertFrom-Base64ToIcon -base64String $icon
 # Left Panel for Main Controls
 $leftPanel = New-Object Windows.Forms.Panel
 $leftPanel.Location = New-Object Drawing.Point(20, 20)
-$leftPanel.Size = New-Object Drawing.Size(250, 140)
+$leftPanel.Size = New-Object Drawing.Size(250, 180)
 $leftPanel.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#FFFFFF")
 $captureButton = New-Object Windows.Forms.Button
 $captureButton.Text = "Single Capture"
@@ -144,21 +144,29 @@ $continuousModeButton.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#3
 $continuousModeButton.ForeColor = [System.Drawing.Color]::White
 
 $openButton = New-Object Windows.Forms.Button
-$openButton.Text = "Open Last Capture"
+$openButton.Text = "Open Capture"
 $openButton.Location = New-Object Drawing.Point(15, 95)
-$openButton.Size = New-Object Drawing.Size(107, 35)  # Width reduced to half (220/2 ≈ 107)
+$openButton.Size = New-Object Drawing.Size(107, 35)
 $openButton.FlatStyle = [System.Windows.Forms.FlatStyle]::System
 $openButton.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#5856D6")
 $openButton.ForeColor = [System.Drawing.Color]::White
 $openButton.Enabled = $false
 
- $openFolderButton = New-Object Windows.Forms.Button
-$openFolderButton.Text = "Open Capture Folder"
+$openFolderButton = New-Object Windows.Forms.Button
+$openFolderButton.Text = "Open Folder"
 $openFolderButton.Location = New-Object Drawing.Point(128, 95)
 $openFolderButton.Size = New-Object Drawing.Size(107, 35)
 $openFolderButton.FlatStyle = [System.Windows.Forms.FlatStyle]::System
 $openFolderButton.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#5856D6")
 $openFolderButton.ForeColor = [System.Drawing.Color]::White
+
+$aiSopButton = New-Object Windows.Forms.Button
+$aiSopButton.Text = "✨ Generate AI SOP"
+$aiSopButton.Location = New-Object Drawing.Point(15, 135)
+$aiSopButton.Size = New-Object Drawing.Size(220, 35)
+$aiSopButton.FlatStyle = [System.Windows.Forms.FlatStyle]::flat
+$aiSopButton.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#FF9F0A")
+$aiSopButton.ForeColor = [System.Drawing.Color]::White
 
 # Center Panel for Checkboxes
 $centerPanel = New-Object Windows.Forms.Panel
@@ -268,7 +276,7 @@ $mouseOpacityNumeric.Value = 50
 
 # Status Label
 $statusLabel = New-Object Windows.Forms.Label
-$statusLabel.Location = New-Object Drawing.Point(20, 170)
+$statusLabel.Location = New-Object Drawing.Point(20, 210)
 $statusLabel.Size = New-Object Drawing.Size(1140, 30)
 $statusLabel.Text = "Ready to Capture ..."
 $statusLabel.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#FFFFFF")
@@ -287,8 +295,8 @@ $contextMenu.Items.Add($copyMenuItem)
 
 # Picture Box
 $pictureBox = New-Object Windows.Forms.PictureBox
-$pictureBox.Size = New-Object Drawing.Size(1140, 560)
-$pictureBox.Location = New-Object Drawing.Point(20, 210)
+$pictureBox.Size = New-Object Drawing.Size(1140, 520)
+$pictureBox.Location = New-Object Drawing.Point(20, 250)
 $pictureBox.SizeMode = [System.Windows.Forms.PictureBoxSizeMode]::zoom
 $pictureBox.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
 $pictureBox.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#FFFFFF")
@@ -305,7 +313,8 @@ $leftPanel.Controls.AddRange(@(
     $captureButton,
     $continuousModeButton,
     $openButton,
-    $openFolderButton
+    $openFolderButton,
+    $aiSopButton
 ))
 
 $centerPanel.Controls.AddRange(@(
@@ -404,6 +413,123 @@ $openFolderButton.Add_Click({
         Start-Process explorer.exe -ArgumentList $global:sessionFolder
     } else {
         [System.Windows.Forms.MessageBox]::Show("Screenshots folder not found.", "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
+    }
+})
+
+$openFolderButton.Add_Click({
+    if (Test-Path $global:sessionFolder) {
+        Start-Process explorer.exe -ArgumentList $global:sessionFolder
+    } else {
+        [System.Windows.Forms.MessageBox]::Show("Screenshots folder not found.", "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
+    }
+})
+
+$aiSopButton.Add_Click({
+    if (-not (Test-Path $global:sessionFolder)) {
+        [System.Windows.Forms.MessageBox]::Show("No screenshots found. Please take screenshots first.", "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning)
+        return
+    }
+
+    # Custom AI Dialog
+    $aiForm = New-Object Windows.Forms.Form
+    $aiForm.Text = "AI SOP Generator Configuration"
+    $aiForm.Size = New-Object Drawing.Size(400, 250)
+    $aiForm.StartPosition = "CenterParent"
+    $aiForm.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedDialog
+    $aiForm.MaximizeBox = $false
+    $aiForm.MinimizeBox = $false
+
+    $lblDisclaimer = New-Object Windows.Forms.Label
+    $lblDisclaimer.Text = "Disclaimer: Model MUST be vision-enabled (e.g. gemma4:e4b, llava)."
+    $lblDisclaimer.Location = New-Object Drawing.Point(15, 15)
+    $lblDisclaimer.Size = New-Object Drawing.Size(350, 40)
+    $lblDisclaimer.ForeColor = [System.Drawing.Color]::Red
+    $lblDisclaimer.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+
+    $lblModel = New-Object Windows.Forms.Label
+    $lblModel.Text = "Model Name:"
+    $lblModel.Location = New-Object Drawing.Point(15, 60)
+    $lblModel.Size = New-Object Drawing.Size(120, 25)
+
+    $txtModel = New-Object Windows.Forms.TextBox
+    $txtModel.Location = New-Object Drawing.Point(150, 60)
+    $txtModel.Size = New-Object Drawing.Size(200, 25)
+    $txtModel.Text = "gemma4:e4b"
+
+    $lblContext = New-Object Windows.Forms.Label
+    $lblContext.Text = "Context window:"
+    $lblContext.Location = New-Object Drawing.Point(15, 100)
+    $lblContext.Size = New-Object Drawing.Size(120, 25)
+
+    $txtContext = New-Object Windows.Forms.NumericUpDown
+    $txtContext.Location = New-Object Drawing.Point(150, 100)
+    $txtContext.Size = New-Object Drawing.Size(200, 25)
+    $txtContext.Maximum = 128000
+    $txtContext.Value = 8192
+
+    $btnGenerate = New-Object Windows.Forms.Button
+    $btnGenerate.Text = "Generate"
+    $btnGenerate.Location = New-Object Drawing.Point(230, 150)
+    $btnGenerate.Size = New-Object Drawing.Size(120, 35)
+    $btnGenerate.DialogResult = [System.Windows.Forms.DialogResult]::OK
+    $btnGenerate.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#007AFF")
+    $btnGenerate.ForeColor = [System.Drawing.Color]::White
+
+    $aiForm.Controls.AddRange(@($lblDisclaimer, $lblModel, $txtModel, $lblContext, $txtContext, $btnGenerate))
+    $aiForm.AcceptButton = $btnGenerate
+
+    if ($aiForm.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+        $modelName = $txtModel.Text
+        $contextSize = $txtContext.Value
+        
+        $images = Get-ChildItem -Path $global:sessionFolder -Filter "*.png" | Sort-Object Name
+        if ($images.Count -eq 0) {
+            [System.Windows.Forms.MessageBox]::Show("No .png files found in session folder.", "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
+            return
+        }
+
+        $mdPath = Join-Path $global:sessionFolder "SOP.md"
+        "# LocalScribe AI SOP`n`n" | Out-File -FilePath $mdPath -Encoding UTF8
+
+        $sysPrompt = "You are a helpful technical writing assistant. Your task is to extract a concise, single-sentence instruction for what the user is doing in the provided screenshot. Only provide the sentence, nothing else."
+        
+        $statusLabel.Text = "Generating AI SOP... (0/$($images.Count))"
+        $statusLabel.Refresh()
+
+        $step = 1
+        foreach ($img in $images) {
+            $statusLabel.Text = "Generating AI SOP... ($step/$($images.Count))"
+            $statusLabel.Refresh()
+            
+            $bytes = [System.IO.File]::ReadAllBytes($img.FullName)
+            $b64 = [Convert]::ToBase64String($bytes)
+            
+            $payload = @{
+                model = $modelName
+                prompt = $sysPrompt
+                images = @($b64)
+                stream = $false
+                options = @{
+                    num_ctx = [int]$contextSize
+                }
+            } | ConvertTo-Json -Depth 5
+
+            try {
+                $response = Invoke-RestMethod -Uri "http://localhost:11434/api/generate" -Method Post -Body $payload -ContentType "application/json"
+                $desc = $response.response.Trim()
+            } catch {
+                $desc = "FAILED TO GENERATE: $_"
+            }
+            
+            "### Step $step`n" | Out-File -FilePath $mdPath -Append -Encoding UTF8
+            "$desc`n" | Out-File -FilePath $mdPath -Append -Encoding UTF8
+            "![Step $step]($($img.Name))`n`n" | Out-File -FilePath $mdPath -Append -Encoding UTF8
+            
+            $step++
+        }
+
+        $statusLabel.Text = "AI SOP Generation Complete!"
+        Start-Process $mdPath
     }
 })
 
