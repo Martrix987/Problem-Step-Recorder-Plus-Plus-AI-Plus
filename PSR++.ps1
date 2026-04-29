@@ -433,7 +433,7 @@ $aiSopButton.Add_Click({
     # Custom AI Dialog
     $aiForm = New-Object Windows.Forms.Form
     $aiForm.Text = "AI SOP Generator Configuration"
-    $aiForm.Size = New-Object Drawing.Size(400, 250)
+    $aiForm.Size = New-Object Drawing.Size(400, 300)
     $aiForm.StartPosition = "CenterParent"
     $aiForm.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedDialog
     $aiForm.MaximizeBox = $false
@@ -451,10 +451,10 @@ $aiSopButton.Add_Click({
     $lblModel.Location = New-Object Drawing.Point(15, 60)
     $lblModel.Size = New-Object Drawing.Size(120, 25)
 
-    $txtModel = New-Object Windows.Forms.TextBox
-    $txtModel.Location = New-Object Drawing.Point(150, 60)
-    $txtModel.Size = New-Object Drawing.Size(200, 25)
-    $txtModel.Text = "gemma4:e4b"
+    $comboModel = New-Object Windows.Forms.ComboBox
+    $comboModel.Location = New-Object Drawing.Point(150, 60)
+    $comboModel.Size = New-Object Drawing.Size(200, 25)
+    $comboModel.DropDownWidth = 300
 
     $lblContext = New-Object Windows.Forms.Label
     $lblContext.Text = "Context window:"
@@ -467,22 +467,78 @@ $aiSopButton.Add_Click({
     $txtContext.Maximum = 128000
     $txtContext.Value = 8192
 
+    $lblBackend = New-Object Windows.Forms.Label
+    $lblBackend.Text = "AI Backend:"
+    $lblBackend.Location = New-Object Drawing.Point(15, 140)
+    $lblBackend.Size = New-Object Drawing.Size(120, 25)
+
+    $comboBackend = New-Object Windows.Forms.ComboBox
+    $comboBackend.Location = New-Object Drawing.Point(150, 140)
+    $comboBackend.Size = New-Object Drawing.Size(200, 25)
+    $comboBackend.Items.Add("Ollama (http://localhost:11434)")
+    $comboBackend.Items.Add("LM Studio (http://localhost:1234)")
+    $comboBackend.SelectedIndex = 0
+    $comboBackend.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
+
+    $updateModels = {
+        $comboModel.Items.Clear()
+        $comboModel.Text = "Retrieving models..."
+        
+        if ($comboBackend.SelectedItem -match "Ollama") {
+            try {
+                $response = Invoke-RestMethod -Uri "http://localhost:11434/api/tags" -Method Get -TimeoutSec 3 -ErrorAction Stop
+                $models = $response.models | Sort-Object -Property @{Expression={$_.details.family};Descending=$false}, name
+                foreach ($m in $models) {
+                    $family = if ($m.details.family) { "[$($m.details.family)] " } else { "[Other] " }
+                    $comboModel.Items.Add("$family$($m.name)") | Out-Null
+                }
+            } catch {
+                $comboModel.Items.Add("qwen2.5:latest") | Out-Null
+                $comboModel.Items.Add("llava:latest") | Out-Null
+                $comboModel.Text = "Ensure Ollama is running"
+            }
+        } else {
+            try {
+                $response = Invoke-RestMethod -Uri "http://localhost:1234/v1/models" -Method Get -TimeoutSec 3 -ErrorAction Stop
+                $models = $response.data | Sort-Object id
+                foreach ($m in $models) {
+                    $comboModel.Items.Add($m.id) | Out-Null
+                }
+            } catch {
+                $comboModel.Items.Add("local-model") | Out-Null
+                $comboModel.Text = "Ensure LM Studio is running"
+            }
+        }
+
+        if ($comboModel.Items.Count -gt 0 -and $comboModel.Text -like "Retrieving*") {
+            $comboModel.SelectedIndex = 0
+        }
+    }
+
+    $comboBackend.Add_SelectedIndexChanged($updateModels)
+    # trigger it manually the first time
+    & $updateModels
+
     $btnGenerate = New-Object Windows.Forms.Button
     $btnGenerate.Text = "Generate"
-    $btnGenerate.Location = New-Object Drawing.Point(230, 150)
+    $btnGenerate.Location = New-Object Drawing.Point(230, 200)
     $btnGenerate.Size = New-Object Drawing.Size(120, 35)
     $btnGenerate.DialogResult = [System.Windows.Forms.DialogResult]::OK
     $btnGenerate.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#007AFF")
     $btnGenerate.ForeColor = [System.Drawing.Color]::White
 
-    $aiForm.Controls.AddRange(@($lblDisclaimer, $lblModel, $txtModel, $lblContext, $txtContext, $btnGenerate))
+    $aiForm.Controls.AddRange(@($lblDisclaimer, $lblModel, $comboModel, $lblContext, $txtContext, $lblBackend, $comboBackend, $btnGenerate))
     $aiForm.AcceptButton = $btnGenerate
 
     if ($aiForm.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
-        $modelName = $txtModel.Text
-        $contextSize = $txtContext.Value
+        $rawModelName = $comboModel.Text
+        # If categorized with prefix (e.g. "[llama] llama3"), extract the actual name
+        $modelName = $rawModelName -replace '^\[.*?\]\s*', ''
         
-        $images = Get-ChildItem -Path $global:sessionFolder -Filter "*.png" | Sort-Object Name
+        $contextSize = $txtContext.Value
+        $backend = $comboBackend.SelectedItem.ToString()
+        
+        $images = @(Get-ChildItem -Path $global:sessionFolder -Filter "*.png" | Sort-Object Name)
         if ($images.Count -eq 0) {
             [System.Windows.Forms.MessageBox]::Show("No .png files found in session folder.", "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
             return
@@ -490,13 +546,13 @@ $aiSopButton.Add_Click({
 
         $mdPath = Join-Path $global:sessionFolder "SOP.md"
         "# LocalScribe AI SOP`n`n" | Out-File -FilePath $mdPath -Encoding UTF8
-
-        $sysPrompt = "You are a helpful technical writing assistant. Your task is to extract a concise, single-sentence instruction for what the user is doing in the provided screenshot. Only provide the sentence, nothing else."
         
         $statusLabel.Text = "Generating AI SOP... (0/$($images.Count))"
         $statusLabel.Refresh()
 
         $step = 1
+        $stepHistory = @()
+
         foreach ($img in $images) {
             $statusLabel.Text = "Generating AI SOP... ($step/$($images.Count))"
             $statusLabel.Refresh()
@@ -504,22 +560,70 @@ $aiSopButton.Add_Click({
             $bytes = [System.IO.File]::ReadAllBytes($img.FullName)
             $b64 = [Convert]::ToBase64String($bytes)
             
-            $payload = @{
-                model = $modelName
-                prompt = $sysPrompt
-                images = @($b64)
-                stream = $false
-                options = @{
-                    num_ctx = [int]$contextSize
-                }
-            } | ConvertTo-Json -Depth 5
+            $historyText = if ($stepHistory.Count -gt 0) { $stepHistory -join "`n" } else { "None yet. This is the first step." }
+            
+            $dynamicPrompt = "You are an expert technical writer documenting a step-by-step Standard Operating Procedure (SOP).`n" +
+                             "Analyze the provided screenshot. Look specifically for the mouse cursor and any highlighted UI elements (buttons, menus, text fields) to determine the user's action.`n`n" +
+                             "Context of previous steps:`n$historyText`n`n" +
+                             "Write the instruction for Step $($step). Use clear, active voice (e.g., 'Click the ""Submit"" button').`n`n" +
+                             "CRITICAL RULES:`n" +
+                             "1. Output ONLY the single instruction sentence.`n" +
+                             "2. Do NOT start with 'Step $($step):', 'Here is the step', or 'In this screenshot'.`n" +
+                             "3. Keep it to one concise sentence.`n" +
+                             "4. Do not include any explanations or conversational text."
+            
+            if ($backend -match "Ollama") {
+                $payload = @{
+                    model = $modelName
+                    prompt = $dynamicPrompt
+                    images = @($b64)
+                    stream = $false
+                    options = @{
+                        num_ctx = [int]$contextSize
+                        temperature = 0.1
+                    }
+                } | ConvertTo-Json -Depth 5
 
-            try {
-                $response = Invoke-RestMethod -Uri "http://localhost:11434/api/generate" -Method Post -Body $payload -ContentType "application/json"
-                $desc = $response.response.Trim()
-            } catch {
-                $desc = "FAILED TO GENERATE: $_"
+                try {
+                    $response = Invoke-RestMethod -Uri "http://localhost:11434/api/generate" -Method Post -Body $payload -ContentType "application/json"
+                    $desc = $response.response.Trim()
+                } catch {
+                    $desc = "FAILED TO GENERATE: $_"
+                }
+            } else {
+                # LM Studio uses OpenAI-compatible payload format
+                $payload = @{
+                    model = $modelName
+                    temperature = 0.1
+                    max_tokens = 200
+                    messages = @(
+                        @{
+                            role = "user"
+                            content = @(
+                                @{
+                                    type = "text"
+                                    text = $dynamicPrompt
+                                },
+                                @{
+                                    type = "image_url"
+                                    image_url = @{
+                                        url = "data:image/png;base64,$b64"
+                                    }
+                                }
+                            )
+                        }
+                    )
+                } | ConvertTo-Json -Depth 10
+
+                try {
+                    $response = Invoke-RestMethod -Uri "http://localhost:1234/v1/chat/completions" -Method Post -Body $payload -ContentType "application/json"
+                    $desc = $response.choices[0].message.content.Trim()
+                } catch {
+                    $desc = "FAILED TO GENERATE: $_"
+                }
             }
+            
+            $stepHistory += "Step $($step): $desc"
             
             "### Step $step`n" | Out-File -FilePath $mdPath -Append -Encoding UTF8
             "$desc`n" | Out-File -FilePath $mdPath -Append -Encoding UTF8
