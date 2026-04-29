@@ -554,8 +554,9 @@ $aiSopButton.Add_Click({
         $stepHistory = @()
 
         foreach ($img in $images) {
-            $statusLabel.Text = "Generating AI SOP... ($step/$($images.Count))"
+            $statusLabel.Text = "Generating AI SOP... ($step/$($images.Count)) (UI may pause during inference)"
             $statusLabel.Refresh()
+            [System.Windows.Forms.Application]::DoEvents()
             
             $bytes = [System.IO.File]::ReadAllBytes($img.FullName)
             $b64 = [Convert]::ToBase64String($bytes)
@@ -585,8 +586,14 @@ $aiSopButton.Add_Click({
                 } | ConvertTo-Json -Depth 5
 
                 try {
-                    $response = Invoke-RestMethod -Uri "http://localhost:11434/api/generate" -Method Post -Body $payload -ContentType "application/json"
-                    $desc = $response.response.Trim()
+                    $response = Invoke-RestMethod -Uri "http://localhost:11434/api/generate" -Method Post -Body $payload -ContentType "application/json" -ErrorAction Stop
+                    $desc = $response.response
+                    if ($null -ne $desc) {
+                        $desc = $desc.ToString().Trim()
+                    }
+                    if ([string]::IsNullOrWhiteSpace($desc)) {
+                        $desc = "FAILED: Model returned an empty response. (Is this a Vision-capable model?)"
+                    }
                 } catch {
                     $desc = "FAILED TO GENERATE: $_"
                 }
@@ -616,8 +623,14 @@ $aiSopButton.Add_Click({
                 } | ConvertTo-Json -Depth 10
 
                 try {
-                    $response = Invoke-RestMethod -Uri "http://localhost:1234/v1/chat/completions" -Method Post -Body $payload -ContentType "application/json"
-                    $desc = $response.choices[0].message.content.Trim()
+                    $response = Invoke-RestMethod -Uri "http://localhost:1234/v1/chat/completions" -Method Post -Body $payload -ContentType "application/json" -ErrorAction Stop
+                    $desc = $response.choices[0].message.content
+                    if ($null -ne $desc) {
+                        $desc = $desc.ToString().Trim()
+                    }
+                    if ([string]::IsNullOrWhiteSpace($desc)) {
+                        $desc = "FAILED: Model returned an empty response. (Is this a Vision-capable model?)"
+                    }
                 } catch {
                     $desc = "FAILED TO GENERATE: $_"
                 }
@@ -630,6 +643,7 @@ $aiSopButton.Add_Click({
             "![Step $step]($($img.Name))`n`n" | Out-File -FilePath $mdPath -Append -Encoding UTF8
             
             $step++
+            [System.Windows.Forms.Application]::DoEvents()
         }
 
         $statusLabel.Text = "AI SOP Generation Complete!"
